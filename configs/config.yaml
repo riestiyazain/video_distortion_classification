@@ -1,0 +1,8 @@
+project_dir: "/Users/riestiyazain/Work/NTNU/projects/video_distortion_classification/"
+batch_size: 32
+learning_rate: 0.001
+momentum: 0.9
+num_epochs: 200
+dropout_prob: 0.8
+image_size: 128
+num_classes: 9
