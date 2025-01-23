@@ -18,18 +18,13 @@ def load_hyperparameters(yaml_file):
     with open(yaml_file, 'r') as file:
         return yaml.safe_load(file)
 
-# Function to save the model checkpoint
-def save_checkpoint(model, optimizer, epoch, save_dir):
+# Function to save the best model
+def save_best_model(model, save_dir):
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
-    checkpoint_path = os.path.join(save_dir, f"epoch_{epoch}.pth")
-    checkpoint = {
-        'epoch': epoch,
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-    }
-    torch.save(checkpoint, checkpoint_path)
-    print(f"Checkpoint saved at {checkpoint_path}")
+    model_path = os.path.join(save_dir, "best_model.pth")
+    torch.save(model.state_dict(), model_path)
+    print(f"Best model saved at {model_path}")
 
 # Function to load the model checkpoint if it exists
 def load_checkpoint(model, optimizer, save_dir, device):
@@ -53,7 +48,7 @@ def load_checkpoint(model, optimizer, save_dir, device):
     print(f"Checkpoint loaded from {checkpoint_path}, resuming from epoch {epoch}.")
     return epoch
 
-# Train function
+# Train function with tqdm for progress tracking
 def train(model, train_loader, criterion, optimizer, epoch, writer, device):
     model.train()
     running_loss = 0.0
@@ -82,7 +77,7 @@ def train(model, train_loader, criterion, optimizer, epoch, writer, device):
     print(f"Train Loss: {epoch_loss:.4f}, Train Accuracy: {epoch_acc:.4f}")
     return epoch_loss, epoch_acc
 
-# Validation function
+# Validation function with tqdm for progress tracking
 def validate(model, val_loader, criterion, epoch, writer, device):
     model.eval()
     running_loss = 0.0
@@ -166,6 +161,8 @@ def main(config_path):
 
     start_epoch = load_checkpoint(model, optimizer, checkpoint_dir, device)
 
+    best_val_acc = 0.0  # Initialize the best validation accuracy
+
     for epoch in range(start_epoch, num_epochs):
         train_loss, train_acc = train(model, train_loader, criterion, optimizer, epoch, writer, device)
         val_loss, val_acc = validate(model, val_loader, criterion, epoch, writer, device)
@@ -173,7 +170,10 @@ def main(config_path):
         # Step the scheduler after each epoch
         scheduler.step()
 
-        save_checkpoint(model, optimizer, epoch, checkpoint_dir)
+        # Save the model if it has the best validation accuracy so far
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            save_best_model(model, checkpoint_dir)
 
     writer.close()
 
