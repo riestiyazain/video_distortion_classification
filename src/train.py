@@ -18,35 +18,31 @@ def load_hyperparameters(yaml_file):
     with open(yaml_file, 'r') as file:
         return yaml.safe_load(file)
 
-# Function to save the model checkpoint (best model)
-def save_checkpoint(model, optimizer, epoch, val_acc, best_val_acc, save_dir):
-    if val_acc > best_val_acc:
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-        checkpoint_path = os.path.join(save_dir, f"best_model_epoch_{epoch}.pth")
-        checkpoint = {
-            'epoch': epoch,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'val_acc': val_acc,
-        }
-        torch.save(checkpoint, checkpoint_path)
-        print(f"Best model checkpoint saved at {checkpoint_path} with validation accuracy: {val_acc:.4f}")
-        return val_acc
-    return best_val_acc
+# Function to save the model checkpoint
+def save_checkpoint(model, optimizer, epoch, save_dir):
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    checkpoint_path = os.path.join(save_dir, f"epoch_{epoch}.pth")
+    checkpoint = {
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+    }
+    torch.save(checkpoint, checkpoint_path)
+    print(f"Checkpoint saved at {checkpoint_path}")
 
 # Function to load the model checkpoint if it exists
 def load_checkpoint(model, optimizer, save_dir, device):
     if not os.path.exists(save_dir):
         print(f"No checkpoint directory found at {save_dir}, starting from scratch.")
-        return 0, 0.0  # Start from scratch, best validation accuracy = 0.0
+        return 0
 
     checkpoint_files = [f for f in os.listdir(save_dir) if f.endswith('.pth')]
     if not checkpoint_files:
         print(f"No checkpoint found in {save_dir}, starting from scratch.")
-        return 0, 0.0
+        return 0
 
-    checkpoint_files.sort(key=lambda f: int(f.split('_')[3].split('.')[0]))
+    checkpoint_files.sort(key=lambda f: int(f.split('_')[1].split('.')[0]))
     latest_checkpoint = checkpoint_files[-1]
     checkpoint_path = os.path.join(save_dir, latest_checkpoint)
 
@@ -54,9 +50,8 @@ def load_checkpoint(model, optimizer, save_dir, device):
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     epoch = checkpoint['epoch'] + 1
-    best_val_acc = checkpoint.get('val_acc', 0.0)
-    print(f"Checkpoint loaded from {checkpoint_path}, resuming from epoch {epoch} with best validation accuracy: {best_val_acc:.4f}.")
-    return epoch, best_val_acc
+    print(f"Checkpoint loaded from {checkpoint_path}, resuming from epoch {epoch}.")
+    return epoch
 
 # Train function
 def train(model, train_loader, criterion, optimizer, epoch, writer, device):
@@ -130,6 +125,7 @@ def main(config_path):
     num_epochs = hyperparams['num_epochs']
     image_size = hyperparams['image_size']
     num_classes = hyperparams['num_classes']
+    eta_min = hyperparams.get('eta_min', 0.0001)  # Minimum learning rate for scheduler
 
     quick_test = hyperparams.get('quick_test', False)
     quick_test_size = hyperparams.get('quick_test_size', 100)
@@ -152,7 +148,6 @@ def main(config_path):
         print(f"Quick test mode enabled with subset size: {quick_test_size}")
         train_dataset = get_subset(train_dataset, quick_test_size)
         val_dataset = get_subset(val_dataset, quick_test_size)
-        # num_epochs = 2  # Optionally reduce epochs for quick test
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
@@ -163,14 +158,22 @@ def main(config_path):
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=momentum)
+
+    # Add Cosine Annealing Scheduler
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=eta_min)
+
     writer = SummaryWriter(log_dir=log_dir)
 
-    start_epoch, best_val_acc = load_checkpoint(model, optimizer, checkpoint_dir, device)
+    start_epoch = load_checkpoint(model, optimizer, checkpoint_dir, device)
 
     for epoch in range(start_epoch, num_epochs):
         train_loss, train_acc = train(model, train_loader, criterion, optimizer, epoch, writer, device)
         val_loss, val_acc = validate(model, val_loader, criterion, epoch, writer, device)
-        best_val_acc = save_checkpoint(model, optimizer, epoch, val_acc, best_val_acc, checkpoint_dir)
+
+        # Step the scheduler after each epoch
+        scheduler.step()
+
+        save_checkpoint(model, optimizer, epoch, checkpoint_dir)
 
     writer.close()
 
