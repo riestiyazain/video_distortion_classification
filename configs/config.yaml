@@ -1,12 +1,13 @@
-project_dir: "/Users/riestiyazain/Work/NTNU/projects/video_distortion_classification/"
+project_dir: "/media/user1/Data 1/Riestiya/video_distortion_classification/"
 batch_size: 32
 learning_rate: 0.01
 momentum: 0.9
-num_epochs: 50
+num_epochs: 200
 dropout_prob: 0.8
 image_size: 256
 num_classes: 9
-checkpoint_path: "models/checkpoints/"
-quick_test: true   # Enable quick test
-quick_test_size: 500  # Only use 100 samples from train/val datasets
+checkpoint_path: "models/exp_1/"
+quick_test: false   # Enable quick test
+# quick_test_size: 500  # Only use 100 samples from train/val datasets
 eta_min: 0.001
+seed: 42

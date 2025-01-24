@@ -10,6 +10,7 @@ import random
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import argparse
+import numpy as np
 
 from src.model import get_model  # Import the updated model
 
@@ -47,6 +48,28 @@ def load_checkpoint(model, optimizer, save_dir, device):
     epoch = checkpoint['epoch'] + 1
     print(f"Checkpoint loaded from {checkpoint_path}, resuming from epoch {epoch}.")
     return epoch
+
+# Function to set seed for reproducibility
+def set_seed(seed):
+    """
+    Set seed for reproducibility across libraries and hardware.
+    
+    Args:
+    - seed (int): The seed to use for random number generation.
+    """
+    random.seed(seed)  # Python's random module
+    np.random.seed(seed)  # NumPy
+    torch.manual_seed(seed)  # PyTorch (CPU)
+    
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)  # PyTorch (GPU)
+        torch.cuda.manual_seed_all(seed)  # For multi-GPU if applicable
+    
+    # Ensure deterministic behavior in CUDA
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False  # For reproducibility
+
+    print(f"Seed set to: {seed}")
 
 # Train function with tqdm for progress tracking
 def train(model, train_loader, criterion, optimizer, epoch, writer, device):
@@ -121,6 +144,7 @@ def main(config_path):
     image_size = hyperparams['image_size']
     num_classes = hyperparams['num_classes']
     eta_min = hyperparams.get('eta_min', 0.0001)  # Minimum learning rate for scheduler
+    seed = hyperparams.get('seed', 42)  # Seed for reproducibility
 
     quick_test = hyperparams.get('quick_test', False)
     quick_test_size = hyperparams.get('quick_test_size', 100)
@@ -129,6 +153,9 @@ def main(config_path):
     train_dir = os.path.join(project_dir, 'dataset', 'processed_frames', 'train')
     val_dir = os.path.join(project_dir, 'dataset', 'processed_frames', 'val')
     log_dir = os.path.join(project_dir, 'runs', 'distortion_classification_experiment')
+
+    # Set seed for reproducibility
+    set_seed(seed)
 
     transform = transforms.Compose([
         transforms.Resize((image_size, image_size)),
