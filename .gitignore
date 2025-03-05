@@ -70,4 +70,12 @@ events.out.tfevents.*
 
 # Ignore the dataset folder
 dataset/
+
+# Ignore experiments folder
 runs/
+experiments/
+useful_commands.txt
+MC_dropout/
+models/
+notebooks/
+configs/experiments/

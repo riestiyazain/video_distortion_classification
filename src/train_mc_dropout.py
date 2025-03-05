@@ -1,10 +1,11 @@
 import os
-import sys
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
+import torch.nn.functional as F
+
 import random
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -13,7 +14,64 @@ import numpy as np
 from datetime import datetime
 
 from src.model import get_model  # Import the updated model
-from src.utils import load_hyperparameters, save_best_model, load_checkpoint, set_seed, get_subset
+from src.utils import load_hyperparameters, save_best_model, load_checkpoint, set_seed, print_mc_dropout_results
+    
+
+def enable_dropout(model):
+    """
+    Enable dropout layers during test-time to perform Monte Carlo sampling.
+    """
+    for module in model.modules():
+        if isinstance(module, nn.Dropout):
+            module.train()  # Dropout layers should be active during MC Dropout
+            module.p = 0.5
+            print('dropout enabled')
+    return model
+
+
+def mc_dropout_predict(model, dataloader, num_classes, num_samples=100, device='cuda'):
+    """
+    Perform MC Dropout during validation to quantify uncertainty.
+    
+    Args:
+    - model: The trained model.
+    - dataloader: DataLoader for the validation/test data.
+    - num_classes: Number of output classes.
+    - num_samples: Number of forward passes (MC Dropout samples).
+    - device: Device to perform computation on.
+
+    Returns:
+    - all_preds: Averaged predictions across multiple forward passes.
+    - all_uncertainties: Uncertainties (variance) in predictions.
+    """
+    model = model.to(device)
+    model = enable_dropout(model)  # Enable dropout during validation
+    model.eval()  # But keep the model in evaluation mode
+
+    all_preds = []
+    all_uncertainties = []
+    all_labels = []
+
+    for inputs, labels in tqdm(dataloader, desc="MC Dropout Validation"):
+        inputs = inputs.to(device)
+        all_labels.append(labels.cpu().numpy())  # Store ground truth labels
+
+        # Run multiple forward passes
+        preds = torch.zeros(num_samples, inputs.size(0), num_classes).to(device)
+        for i in range(num_samples):
+            with torch.no_grad():
+                outputs = model(inputs)
+                preds[i] = F.softmax(outputs, dim=1)
+
+        # Mean prediction and uncertainty estimation
+        mean_preds = preds.mean(dim=0)
+        uncertainties = preds.var(dim=0)
+
+        all_preds.append(mean_preds.cpu().numpy())
+        all_uncertainties.append(uncertainties.cpu().numpy())
+
+    return np.concatenate(all_preds, axis=0), np.concatenate(all_uncertainties, axis=0), np.concatenate(all_labels, axis=0)
+
 
 # Train function with tqdm for progress tracking
 def train(model, train_loader, criterion, optimizer, epoch, writer, device):
@@ -70,6 +128,12 @@ def validate(model, val_loader, criterion, epoch, writer, device):
     print(f"Validation Loss: {epoch_loss:.4f}, Validation Accuracy: {epoch_acc:.4f}")
     return epoch_loss, epoch_acc
 
+# Function to get a subset of the dataset for quick testing
+def get_subset(dataset, subset_size):
+    indices = list(range(len(dataset)))
+    random.shuffle(indices)
+    subset_indices = indices[:subset_size]
+    return Subset(dataset, subset_indices)
 
 def main(config_path):
     hyperparams = load_hyperparameters(config_path)
@@ -94,8 +158,8 @@ def main(config_path):
     checkpoint_dir = os.path.join(experiment_dir, 'models', 'checkpoints')
     log_dir = os.path.join(experiment_dir, 'runs')
 
-    train_dir = hyperparams.get('train_dir', os.path.join(project_dir, 'dataset', 'processed_frames', 'train')) 
-    val_dir = hyperparams.get('val_dir', os.path.join(project_dir, 'dataset', 'processed_frames', 'val'))
+    train_dir = os.path.join(project_dir, 'dataset', 'processed_frames', 'train')
+    val_dir = os.path.join(project_dir, 'dataset', 'processed_frames', 'val')
 
     # Ensure directories exist
     os.makedirs(checkpoint_dir, exist_ok=True)
@@ -141,9 +205,24 @@ def main(config_path):
         # Print current learning rate in tqdm
         tqdm.write(f"Learning Rate: {optimizer.param_groups[0]['lr']:.6f}")
         
+        # Training phase
         train_loss, train_acc = train(model, train_loader, criterion, optimizer, epoch, writer, device)
+        
+        # Validation phase
         val_loss, val_acc = validate(model, val_loader, criterion, epoch, writer, device)
-
+        
+        # Perform MC Dropout after each epoch
+        mean_preds, uncertainties, labels = mc_dropout_predict(model, val_loader, num_classes=num_classes, num_samples=50, device=device)
+        
+        accuracy, brier_score, nll, entropy, ece = print_mc_dropout_results(mean_preds, uncertainties, labels, num_classes)
+        
+        writer.add_scalar('MC dropout/ Accuracy ', accuracy, epoch)
+        writer.add_scalar('MC dropout/ Prediction Variance (uncertainty) ', np.mean(uncertainties), epoch)
+        writer.add_scalar('MC dropout/ Brier Score ', brier_score, epoch)
+        writer.add_scalar('MC dropout/ Negative Log Likelihood (NLL) ', nll, epoch)
+        writer.add_scalar('MC dropout/ Predictive Entropy ', entropy, epoch)
+        writer.add_scalar('MC dropout/ Expected Calibration Error (ECE) ', ece, epoch)
+        
         # Step the scheduler after each epoch
         scheduler.step()
 
@@ -154,6 +233,7 @@ def main(config_path):
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             save_best_model(model, optimizer, epoch, checkpoint_dir, best=True)
+
 
     writer.close()
 

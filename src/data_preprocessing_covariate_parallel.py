@@ -57,15 +57,16 @@ def process_videos_in_parallel(video_files, distortion_folder, output_dir, disto
                 video_files), 
                 total=len(video_files), desc=f"Processing {split} set for {distortion_type}"))
 
-def split_dataset_and_extract_frames(data_dir, output_dir, train_size=0.8, val_size=0.1):
+def split_dataset_and_extract_frames(data_dir, output_dir, train_size=0.8, val_size=0.1, distortion_level=4):
     """
-    Split dataset into train/val/test and extract frames from videos in parallel.
+    Split dataset into train/val/test and extract frames from videos with a specific distortion level.
     
     Args:
     - data_dir (str): Path to the raw dataset directory.
     - output_dir (str): Path to save processed frames.
     - train_size (float): Proportion of the data to use for training.
     - val_size (float): Proportion of the data to use for validation.
+    - distortion_level (int): The distortion level to filter videos by (e.g., 4).
     """
     os.makedirs(output_dir, exist_ok=True)
     distortion_types = [d for d in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, d)) and not d.startswith('.')]
@@ -81,31 +82,38 @@ def split_dataset_and_extract_frames(data_dir, output_dir, train_size=0.8, val_s
         # Skip files that are not videos and ignore system files like .DS_Store
         video_files = [f for f in os.listdir(distortion_folder) if f.endswith(('.mp4', '.avi', '.mkv')) and not f.startswith('.')]
 
+        # Filter video files by the distortion level
+        filtered_video_files = [f for f in video_files if f.split('.')[0].endswith(f'_{distortion_level}')]
+
+        if not filtered_video_files:
+            print(f"No videos found for distortion level {distortion_level} in {distortion_type}. Skipping.")
+            continue
+
         # Train-test split
-        train_val_files, test_files = train_test_split(video_files, test_size=1-train_size, random_state=42)
-        train_files, val_files = train_test_split(train_val_files, test_size=val_size/(train_size + val_size), random_state=42)
+        # train_val_files, test_files = train_test_split(filtered_video_files, test_size=1-train_size, random_state=42)
+        # train_files, val_files = train_test_split(train_val_files, test_size=val_size/(train_size + val_size), random_state=42)
 
         # Process video files in parallel using ThreadPoolExecutor
-        process_videos_in_parallel(train_files, distortion_folder, output_dir, distortion_type, 'train')
-        process_videos_in_parallel(val_files, distortion_folder, output_dir, distortion_type, 'val')
-        process_videos_in_parallel(test_files, distortion_folder, output_dir, distortion_type, 'test')        
-        # process_videos_in_parallel(video_files, distortion_folder, output_dir, distortion_type, 'test')
+        # process_videos_in_parallel(train_files, distortion_folder, output_dir, distortion_type, 'train')
+        # process_videos_in_parallel(val_files, distortion_folder, output_dir, distortion_type, 'val')
+        process_videos_in_parallel(filtered_video_files, distortion_folder, output_dir, distortion_type, 'test')
 
     print("Dataset splitting and frame extraction complete!")
 
 
 if __name__ == "__main__":
     # Set up argument parser
-    parser = argparse.ArgumentParser(description="Split dataset and extract frames from videos.")
+    parser = argparse.ArgumentParser(description="Split dataset and extract frames from videos with a specific distortion level.")
     
-    # Arguments for input/output directories and dataset splitting
+    # Arguments for input/output directories, dataset splitting, and distortion level
     parser.add_argument('--data_dir', type=str, required=True, help="Path to the raw dataset directory.")
     parser.add_argument('--output_dir', type=str, required=True, help="Path to save processed frames.")
     parser.add_argument('--train_size', type=float, default=0.8, help="Proportion of the dataset to use for training (default: 0.8).")
     parser.add_argument('--val_size', type=float, default=0.1, help="Proportion of the dataset to use for validation (default: 0.1).")
+    parser.add_argument('--distortion_level', type=int, default=4, help="The distortion level to filter videos by (default: 4).")
     
     # Parse arguments
     args = parser.parse_args()
     
     # Call the function with the parsed arguments
-    split_dataset_and_extract_frames(args.data_dir, args.output_dir, args.train_size, args.val_size)
+    split_dataset_and_extract_frames(args.data_dir, args.output_dir, args.train_size, args.val_size, args.distortion_level)
