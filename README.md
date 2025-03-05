@@ -1,4 +1,4 @@
-# Uncertainty quantification for video distortion identification model
+# Uncertainty quantification for video distortion classification model
 
 This project focuses on uncertainty quantification for video distortion classification models using Monte Carlo Dropout. 
 ## Dataset
