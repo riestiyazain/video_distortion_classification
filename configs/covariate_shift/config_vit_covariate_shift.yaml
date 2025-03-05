@@ -1,0 +1,16 @@
+project_dir: "/video_distortion_classification/"
+batch_size: 32
+learning_rate: 0.0001
+momentum: 0.9
+num_epochs: 20
+dropout_prob: 0.8
+image_size: 384
+num_classes: 9
+quick_test: false   # Enable quick test
+# quick_test_size: 500  # Only use 100 samples from train/val datasets
+eta_min: 0.00001
+seed: 42
+model_name: "vit_base_patch16_384"  
+experiment_name: ViT_VSQuAD_l4 # Add this field
+train_dir: "/video_distortion_classification/dataset/processed_frames_VSQuaD_level4/train"
+val_dir: "/video_distortion_classification/dataset/processed_frames_VSQuaD_level4/val"

@@ -1,0 +1,14 @@
+project_dir: "/video_distortion_classification/"
+batch_size: 32
+learning_rate: 0.01
+momentum: 0.9
+num_epochs: 20
+dropout_prob: 0.8
+image_size: 256
+num_classes: 9
+quick_test: false   # Enable quick test
+# quick_test_size: 500  # Only use 100 samples from train/val datasets
+eta_min: 0.0001
+seed: 42
+model_name: "resnet18"  # Change to "inception_resnet_v2" or "vit_base_patch16_224" if needed
+experiment_name: FDC_resnet18_VSQuAD 
